@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Segmentation Géospatiale d'Alger - PFE</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&display=swap">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.4/gsap.min.js"></script>
+    <style>
+        /* === Reset & Variables === */
+        :root {
+            --primary: #ED1C24; /* Rouge Djezzy */
+            --secondary: #FF6B00; /* Orange Djezzy */
+            --bg: #FAFAFA;
+            --text: #1A1A1A;
+            --light-gray: #F0F0F0;
+            --dark-bg: #121212;
+            --dark-text: #F0F0F0;
+            --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            transition: background 0.5s ease, color 0.3s ease;
+        }
+
+        body.dark-mode {
+            background: var(--dark-bg);
+            color: var(--dark-text);
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: 80px;
+        }
+
+        /* === Loader === */
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.6s ease;
+        }
+
+        .loader.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(237, 28, 36, 0.2);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        /* === Navigation === */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 1.5rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            
+            transition: var(--transition);
+            
+            
+        }
+
+        body.dark-mode nav {
+           
+        }
+
+        .nav-logo img {
+            height: 80px;
+            transition: var(--transition);
+          align-items: center;
+            
+        }
+    
+        
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+         
+           
+        }
+
+        .nav-links a {
+            color: #ff0000;
+            text-decoration: none;
+            font-weight: 500;
+            position: relative;
+            transition: var(--transition);
+            font-family: 'Exo 2', sans-serif;
+            font-size: 20px;
+            
+        }
+
+        body.dark-mode .nav-links a {
+            color: var(--dark-text);
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary);
+            transition: var(--transition);
+            
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* === Hero avec Parallaxe === */
+        #hero {
+            height: 120vh;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            padding-top: 80px;
+        }
+
+        .parallax-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 150%;
+            background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.5)), 
+                        url(images/earth.gif) center/cover fixed;
+            z-index: -1;
+            will-change: transform;
+        }
+
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+            padding: 0 2rem;
+        }
+
+        .hero-title {
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            margin-bottom: 1.5rem;
+            line-height: 1.1;
+            color: white;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .hero-subtitle {
+            font-size: 1.25rem;
+            margin-bottom: 2.5rem;
+            color: rgba(255,255,255,0.9);
+            text-shadow: 0 1px 5px rgba(0,0,0,0.2);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            background: var(--primary);
+            color: white;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: var(--transition);
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(237, 28, 36, 0.3);
+            background: var(--secondary);
+        }
+
+        /* === Sections Générales === */
+        .section {
+            min-height: 100vh;
+            padding: 8rem 5%;
+            position: relative;
+            opacity: 0;
+            transform: translateY(50px);
+            transition: var(--transition);
+        }
+
+        .section.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .section-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            position: relative;
+            display: inline-block;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 0;
+            width: 60%;
+            height: 4px;
+            background: var(--primary);
+            transition: var(--transition);
+        }
+
+        /* === Section Projet === */
+        #project {
+            background: var(--light-gray);
+        }
+
+        body.dark-mode #project {
+            background: #1A1A1A;
+        }
+
+        .project-description {
+            max-width: 800px;
+            font-size: 1.1rem;
+            margin-bottom: 3rem;
+            line-height: 1.8;
+        }
+
+        /* === Méthodologie Détaillée === */
+        .method-details {
+            margin-top: 4rem;
+        }
+
+        .method-card {
+            display: flex;
+            gap: 3rem;
+            margin-bottom: 5rem;
+            align-items: center;
+        }
+
+        .method-card:nth-child(even) {
+            flex-direction: row-reverse;
+        }
+
+        .method-content {
+            flex: 1;
+        }
+
+        .method-step {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        .method-title {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .method-text {
+            margin-bottom: 1.5rem;
+            line-height: 1.8;
+        }
+
+        .method-image {
+            flex: 1;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            transition: var(--transition);
+        }
+
+        .method-image:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.15);
+        }
+
+        .method-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* === Résultats === */
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 4rem;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            transition: var(--transition);
+        }
+
+        body.dark-mode .result-card {
+            background: #1E1E1E;
+        }
+
+        .result-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.1);
+        }
+
+        .result-image {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+        }
+
+        .result-info {
+            padding: 1.5rem;
+        }
+
+        .result-title {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* === Stats Animées === */
+        .stats-container {
+            display: flex;
+            justify-content: space-around;
+            margin: 5rem 0;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+
+        .stat-item {
+            text-align: center;
+            min-width: 150px;
+        }
+
+        .stat-number {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            line-height: 1;
+        }
+        /* Ajouter au CSS */
+.result-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    opacity: 0;
+    pointer-events: none;
+    transition: var(--transition);
+}
+
+.result-modal.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.modal-image {
+    max-width: 90%;
+    max-height: 90%;
+    transform: scale(0.8);
+    transition: var(--transition);
+}
+
+.result-modal.active .modal-image {
+    transform: scale(1);
+}
+
+        
+        /* === Mode Sombre === */
+        .theme-toggle {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: var(--transition);
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+        }
+        footer {
+      background-color: var(--footer-bg);
+      padding: 2.5rem 1rem;
+      text-align: center;
+    }
+footer {
+    clip-path: polygon(0 20%, 100% 0, 100% 100%, 0% 100%);
+    padding: 5rem 1rem 2.5rem;
+    transition: var(--transition);
+}
+
+body.dark-mode footer {
+    background: #1A1A1A;
+}
+    .footer-logo {
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-logo img {
+      height: 60px;
+      object-fit: contain;
+    }
+
+    .footer-title {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--accent-color);
+      margin-bottom: 1.2rem;
+    }
+
+    .footer-names,
+    .footer-encadrant {
+      font-size: 1rem;
+      line-height: 1.8;
+      margin: 0.3rem 0;
+    }
+
+    .footer-bottom {
+      margin-top: 2rem;
+      font-size: 0.85rem;
+      color: #aaa;
+    }
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none; /* À remplacer par menu burger */
+            }
+            
+            .section {
+                padding: 6rem 5%;
+            }
+            
+            .method-card,
+            .method-card:nth-child(even) {
+                flex-direction: column;
+            }
+            
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-container {
+                flex-direction: column;
+                gap: 3rem;
+            }
+        }
+        .method-timeline {
+    position: relative;
+    margin: 4rem 0;
+}
+.method-card {
+    transform-style: preserve-3d;
+    perspective: 1000px;
+}
+
+.method-image {
+    transform: translateZ(20px);
+    transition: var(--transition);
+}
+
+.method-timeline::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--primary);
+    transform: translateX(-50%);
+}
+/* Styles pour la carte D3 */
+.d3-map-container {
+  margin: 4rem auto 0;
+  max-width: 1000px;
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+
+body.dark-mode .d3-map-container {
+  background: #1E1E1E;
+}
+
+#d3-map {
+  width: 100%;
+  height: 500px;
+  margin: 1rem 0;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.map-controls {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin: 1rem 0;
+}
+
+.map-btn {
+  padding: 0.5rem 1.5rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.map-btn:hover {
+  background: var(--secondary);
+}
+
+.map-legend {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.legend-dot.residential { background: #ED1C24; }
+.legend-dot.industrial { background: #FF6B00; }
+.legend-dot.rural { background: #4CAF50; }
+
+
+    </style>
+</head>
+<body>
+    
+    <!-- Loader -->
+    <div class="loader">
+        <div class="loader-spinner"></div>
+    </div>
+
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-logo">
+            <a href="https://www.djezzy.dz/"> <img src="images/lui.png.png" alt="Djezzy"></a>
+            
+        </div>
+        <div class="nav-links">
+            <a href="#project">Projet</a>
+            
+            <a href="#method">Méthodologie</a>
+            <a href="#results">Résultats</a>
+            <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600&display=swap" rel="stylesheet">
+
+        </div>
+    </nav>
+
+    <!-- Hero avec Parallaxe -->
+    <section id="hero">
+        <div class="parallax-bg"></div>
+        <div class="hero-content">
+            <h1 class="hero-title">Segmentation Géospatiale d'Alger</h1>
+            <p class="hero-subtitle">Classification avancée des zones urbaines par intelligence artificielle</p>
+            <a href="#project" class="btn">Découvrir le projet</a>
+        </div>
+    </section>
+
+    <!-- Section Projet -->
+    <section id="project" class="section">
+        <div class="section-container">
+            <h2 class="section-title">Le Projet</h2>
+            <p class="project-description">
+                Ce projet innovant vise à classifier automatiquement les différentes zones d'Alger (résidentielles, industrielles, rurales) 
+                grâce à des algorithmes de clustering géospatial. Nous avons combiné des données OpenStreetMap avec des techniques de machine learning 
+                pour créer une cartographie intelligente de la capitale algérienne.
+            </p>
+            
+            <div class="stats-container">
+                <div class="stat-item">
+                    <div class="stat-number" data-target="32000">0</div>
+                    <p>Points de données</p>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" data-target="95">0</div>
+                    <p>% de précision</p>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" data-target="12">0</div>
+                    <p>Zones identifiées</p>
+                </div>
+            </div>
+        </div>
+        <canvas id="stats-chart" width="800" height="400"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </section>
+    <div class="earth-container">
+        <div class="holographic-earth"></div>
+      </div>
+
+    <!-- Section Méthodologie -->
+    <section id="method" class="section">
+        <div class="section-container">
+            <h2 class="section-title">Méthodologie</h2>
+            
+            <div class="method-details">
+                <div class="method-card">
+                    <div class="method-content">
+                        <span class="method-step">Étape 1</span>
+                        <h3 class="method-title">Collecte des Données</h3>
+                        <p class="method-text">
+                            Extraction des données géospatiales depuis OpenStreetMap via l'API Overpass Turbo.
+                            Nous avons ciblé les éléments clés : bâtiments, routes, zones commerciales et industrielles.
+                        </p>
+                        <p class="method-text">
+                            Un script Python automatisé nettoie et formate les données pour l'analyse.
+                        </p>
+                    </div>
+                    <div class="method-image">
+                        <img src="images/Données.PNG" alt="Code collecte données">
+                    </div>
+                </div>
+                
+                <div class="method-card">
+                    <div class="method-content">
+                        <span class="method-step">Étape 2</span>
+                        <h3 class="method-title">Clustering K-MEANS</h3>
+                        <p class="method-text">
+                            On applique K-means avec K = 4 (zones rurales, résidentielles, industrielles, commer
+                            ciales). Chaque cluster est ensuite interprété selon ses valeurs moyennes.
+                        </p>
+                        <p class="method-text">
+                            Visualisation des clusters avec Folium et Matplotlib.
+                        </p>
+                    </div>
+                    <div class="method-image">
+                        <img src="images/KMEANS.PNG" alt="Code DBSCAN">
+                    </div>
+                </div>
+                
+                <div class="method-card">
+                    <div class="method-content">
+                        <span class="method-step">Étape 3</span>
+                        <h3 class="method-title">Classification</h3>
+                        <p class="method-text">
+                            Labellisation automatique des clusters basée sur les caractéristiques dominantes :
+                            ratio bâtiments/espaces verts, densité de routes, présence d'installations industrielles.
+                        </p>
+                        <p class="method-text">
+                            Validation manuelle sur un échantillon de 500 points pour évaluer la précision.
+                        </p>
+                    </div>
+                    <div class="method-image">
+                        <img src="images/Visu.PNG" alt="Classification">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section Résultats -->
+    <section id="results" class="section">
+        <div class="section-container">
+            <h2 class="section-title">Résultats</h2>
+            
+            <div class="results-grid">
+                <div class="result-card">
+                    <img src="images/d.PNG" alt="">
+                    <div class="result-info">
+                        <h3 class="result-title">Zones Résidentielles</h3>
+                        <p>Identification précise des quartiers d'habitation avec leur densité</p>
+                    </div>
+                </div>
+                
+                <div class="result-card">
+                    <img src="images/m.PNG" alt="">
+                    <div class="result-info">
+                        <h3 class="result-title">Zones Industrielles</h3>
+                        <p>Détection des pôles industriels et zones d'activité</p>
+                    </div>
+                </div>
+                
+                <div class="result-card">
+                    <img src="images/r.PNG" alt="">
+                    <div class="result-info">
+                        <h3 class="result-title">Zones Rurales</h3>
+                        <p>Cartographie des espaces agricoles et naturels</p>
+                    </div>
+                </div>
+            </div>
+            <div class="d3-map-container">
+                <h3 class="section-subtitle">Carte Interactive d'Alger</h3>
+                <iframe src="maps/algiers_map.html" width="100%" height="700px" style="border:none;" title="Algiers Map"></iframe>
+                <div class="map-controls">
+                  <button class="map-btn" id="zoom-algiers">Zoom Alger</button>
+                  <button class="map-btn" id="reset-zoom">Reset</button>
+                </div>
+                <div class="map-legend">
+                  <div><span class="legend-dot residential"></span> Résidentiel</div>
+                  <div><span class="legend-dot industrial"></span> Industriel</div>
+                  <div><span class="legend-dot rural"></span> Rural</div>
+                </div>
+              </div>
+       
+       
+    </section>
+    <footer>
+        <div class="footer-logo">
+          <!-- Place ton logo USTHB ici -->
+          <img src="images/4180179.png" alt="Logo USTHB" />
+        </div>
+    
+        <div class="footer-title">
+          Projet de fin d'étude : Segmentation de la Carte d'Algérie
+        </div>
+    
+        <div class="footer-names">
+          OUAHIB Elyes<br>
+          TAOUINT Abderrahmane<br>
+          BENBOUTELDJA Akrem Rayan<br>
+          BOUCHERIFI Nassim
+        </div>
+    
+        <div class="footer-encadrant">
+          Encadrant : BEHLOUL Djilali
+        </div>
+    
+        <div class="footer-bottom">
+          &copy; <span id="year"></span> USTHB – Tous droits réservés.
+        </div>
+      </footer>
+    
+      
+      
+   
+    <!-- Bouton Mode Sombre -->
+    <button class="theme-toggle">🌓</button>
+    
+
+   
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/d3-geo.v3.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script>
+   
+        
+        // Loader
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.querySelector('.loader').classList.add('hidden');
+            }, 1500);
+        });
+
+        // Parallax
+        window.addEventListener('scroll', function() {
+            const scrollPosition = window.pageYOffset;
+            document.querySelector('.parallax-bg').style.transform = `translateY(${scrollPosition * 0.5}px)`;
+            
+            // Navbar scroll effect
+            if (scrollPosition > 100) {
+                document.querySelector('nav').style.boxShadow = '0 5px 20px rgba(0,0,0,0.1)';
+                document.querySelector('nav').style.padding = '1rem 5%';
+            } else {
+                document.querySelector('nav').style.boxShadow = 'none';
+                document.querySelector('nav').style.padding = '1.5rem 5%';
+            }
+        });
+
+        // Animation des stats
+        function animateStats() {
+            const statElements = document.querySelectorAll('.stat-number');
+            const duration = 2000;
+            const startTime = Date.now();
+            
+            function updateNumbers() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                statElements.forEach(element => {
+                    const target = parseInt(element.getAttribute('data-target'));
+                    const current = Math.floor(progress * target);
+                    element.textContent = current.toLocaleString();
+                });
+                
+                if (progress < 1) {
+                    requestAnimationFrame(updateNumbers);
+                }
+            }
+            
+            requestAnimationFrame(updateNumbers);
+        }
+
+        // Mode sombre
+        const themeToggle = document.querySelector('.theme-toggle');
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+            
+            // Changement d'icône
+            themeToggle.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌓';
+        });
+
+        // Charger l'état du mode sombre
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+            themeToggle.textContent = '☀️';
+        }
+
+        // Transitions entre sections
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    
+                    // Déclencher l'animation des stats quand la section est visible
+                    if (entry.target.id === 'project') {
+                        animateStats();
+                    }
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('section').forEach(section => {
+            observer.observe(section);
+        });
+
+        // Smooth scrolling pour les ancres
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                const target = document.querySelector(targetId);
+                
+                if (target) {
+                    const navbarHeight = document.querySelector('nav').offsetHeight;
+                    const targetPosition = target.offsetTop - navbarHeight;
+                    
+                    window.scrollTo({
+                        top: targetPosition,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        // Ajouter pour les cartes
+const filterButtons = document.querySelectorAll('.map-tab');
+filterButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const mapType = button.dataset.map;
+        
+        // Mettre à jour l'affichage
+        document.querySelectorAll('.map-layer').forEach(layer => {
+            layer.classList.remove('active');
+        });
+        document.querySelector(`.map-layer[alt*="${mapType}"]`).classList.add('active');
+        
+        // Mettre à jour les boutons
+        filterButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+    });
+});
+// Optimisation des performances
+function lazyLoadImages() {
+    const imageObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                img.src = img.dataset.src;
+                imageObserver.unobserve(img);
+            }
+        });
+    });
+
+    document.querySelectorAll('img[data-src]').forEach(img => {
+        imageObserver.observe(img);
+    });
+}
+// Animation hero avec GSAP
+gsap.from('.hero-title', { 
+    y: 50, 
+    opacity: 0, 
+    duration: 1, 
+    delay: 0.5 
+});
+gsap.from('.hero-subtitle', { 
+    y: 30, 
+    opacity: 0, 
+    duration: 0.8, 
+    delay: 0.8 
+});
+        
+new Chart(document.getElementById('stats-chart'), {
+    type: 'bar',
+    data: {
+      labels: ['Résidentiel', 'Industriel', 'Rural', 'Commercial'],
+      datasets: [{
+        label: 'Répartition des zones',
+        data: [45, 25, 20, 10],
+        backgroundColor: ['#ED1C24', '#FF6B00', '#4CAF50', '#2196F3']
+      }]
+    }
+  });
+  // Configuration de la carte D3.js
+function initD3Map() {
+  // Dimensions
+  const width = document.getElementById('d3-map').clientWidth;
+  const height = 500;
+
+  // Création du SVG
+  const svg = d3.select("#d3-map")
+    .append("svg")
+    .attr("width", "100%")
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width} ${height}`);
+
+  // Projection et path
+   const projection = d3.geoMercator()
+    .center([3.0588, 36.7538])
+    .scale(60000)
+    .translate([width / 2, height / 2]);
+
+  const path = d3.geoPath().projection(projection);
+  const citiesData = [
+    {
+      name: "Alger-Centre",
+      coordinates: [3.0588, 36.7538],
+      type: "residential",
+      population: 150000,
+      area: 12.5,
+      density: 12000
+    },
+    {
+      name: "Bab Ezzouar", 
+      coordinates: [3.1825, 36.7161],
+      type: "industrial",
+      population: 95000,
+      area: 15.2,
+      density: 6250}]
+       // Fonction pour mettre à jour le panel d'info
+  function updateCityInfo(city) {
+    document.getElementById("city-name").textContent = city.name;
+    document.getElementById("city-type").textContent = 
+      city.type === "residential" ? "Résidentielle" :
+      city.type === "industrial" ? "Industrielle" : "Rurale";
+    document.getElementById("city-population").textContent = 
+      city.population.toLocaleString();
+    document.getElementById("city-area").textContent = city.area;
+    document.getElementById("city-density").textContent = 
+      city.density.toLocaleString();
+  }
+
+  // Groupes
+  const g = svg.append("g");
+
+  // Zoom behavior
+  const zoom = d3.zoom()
+    .scaleExtent([1, 8])
+    .on("zoom", (event) => {
+      g.attr("transform", event.transform);
+    });
+
+  svg.call(zoom);
+
+  // Chargement des données
+  d3.json("alger.geojson").then(function(algerData) {
+   
+
+    // Dessin des communes
+    g.selectAll("path")
+      .data(algerData.features)
+      .enter()
+      .append("path")
+      .attr("d", path)
+      .attr("fill", "#f0f0f0")
+      .attr("stroke", "#999")
+      .attr("stroke-width", 0.3);
+
+    // Villes principales d'Alger (exemple)
+    const algerCities = [
+      {name: "Alger-Centre", lon: 3.0588, lat: 36.7538, type: "residential"},
+      {name: "Bab Ezzouar", lon: 3.1825, lat: 36.7161, type: "industrial"},
+      {name: "Dar El Beïda", lon: 3.2125, lat: 36.7139, type: "residential"},
+      {name: "Rouiba", lon: 3.2808, lat: 36.7383, type: "industrial"},
+    ];
+
+    // Points des villes
+    g.selectAll(".city")
+      .data(algerCities)
+      .enter()
+      .append("circle")
+      .attr("cx", d => projection([d.lon, d.lat])[0])
+      .attr("cy", d => projection([d.lon, d.lat])[1])
+      .attr("r", 4)
+      .attr("fill", d => {
+        switch(d.type) {
+          case "residential": return "#ED1C24";
+          case "industrial": return "#FF6B00";
+          case "rural": return "#4CAF50";
+        }
+      })
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1);
+
+    // Contrôles de zoom
+    document.getElementById("zoom-algiers").addEventListener("click", () => {
+      svg.transition()
+        .duration(750)
+        .call(zoom.transform, d3.zoomIdentity
+          .translate(width / 2, height / 2)
+          .scale(7)
+          .translate(-projection([3.0588, 36.7538])[0], -projection([3.0588, 36.7538])[1]));
+    });
+
+    document.getElementById("reset-zoom").addEventListener("click", () => {
+      svg.transition()
+        .duration(750)
+        .call(zoom.transform, d3.zoomIdentity);
+    });
+  });
+}
+
+// Initialiser la carte quand la section est visible
+const resultsObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      initD3Map();
+      resultsObserver.unobserve(entry.target);
+    }
+  });
+}, {threshold: 0.1});
+
+resultsObserver.observe(document.getElementById('results'));
+
+    </script>
+</body>
+</html>
