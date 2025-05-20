@@ -62,7 +62,7 @@ if not (os.path.exists(pop_path) and os.path.exists(build_path)):
     raise FileNotFoundError("Population or building data file is missing.")
 
 # --- Parameters ---
-n_clusters = 3         # For clustering analysis
+n_clusters = 2      # For clustering analysis
 upscale_factor = 8      # For resolution adjustment
 def align_raster(src_data, src_transform, src_crs, dst_shape, dst_transform, dst_crs):
     """
@@ -209,40 +209,58 @@ def raster_layer(rgb_image, bounds, crs, layer_name):
     ).add_to(layer)
     return layer
 
-def analyze_clusters(cluster_model, feature_names):
+def analyze_clusters_combined(main_cluster_model, subcluster_model, feature_names, descriptions):
     """
-    Print and return the main characteristics of each cluster.
+    Combine main clusters and subclusters into a single list of profiles with descriptions.
     """
-    centroids = cluster_model.cluster_centers_
-    cluster_profiles = []
-    for i, centroid in enumerate(centroids):
-        top_features = np.argsort(centroid)[::-1][:3]
+    combined_profiles = []
+    # Analyze main clusters
+    main_centroids = main_cluster_model.cluster_centers_
+    for i, centroid in enumerate(main_centroids):
         profile = {
-            'cluster': i,
-            'features': [(feature_names[j], centroid[j]) for j in top_features],
+            'cluster': descriptions.get(f"Cluster {i}", f"Cluster {i}"),
+            'features': [
+                ("Population", centroid[feature_names.index("Population")]),
+                ("Buildings", centroid[feature_names.index("Buildings")]),
+            ],
         }
-        cluster_profiles.append(profile)
-        print(f"\nCluster {i} - Caractéristiques principales:")
-        for feat_idx, feat_val in zip(top_features, centroid[top_features]):
-            print(f" {feature_names[feat_idx]}: {feat_val:.2f}")
-    return cluster_profiles
+        combined_profiles.append(profile)
 
-def create_meaningful_legend(cluster_profiles, colormap):
+    # Analyze subclusters (continue numbering from main clusters)
+    sub_centroids = subcluster_model.cluster_centers_
+    offset = len(main_centroids)  # Start numbering subclusters after main clusters
+    for i, centroid in enumerate(sub_centroids):
+        profile = {
+            'cluster': descriptions.get(f"Cluster {i + offset}", f"Cluster {i + offset}"),
+            'features': [
+                ("Population", centroid[feature_names.index("Population")]),
+                ("Buildings", centroid[feature_names.index("Buildings")]),
+            ],
+        }
+        combined_profiles.append(profile)
+
+    return combined_profiles
+
+
+def create_combined_legend_fixed(cluster_profiles, colormap):
+    """
+    Create a legend with consistent color mapping for all clusters.
+    """
     legend_html = '''
     <div style="position: fixed; bottom: 40px; left: 40px; z-index:9999;
                 background-color: white; padding: 15px; border:2px solid grey; border-radius: 5px;
                 max-height: 600px; overflow-y: auto;">
-        <strong style="font-size:14px;">LÉGENDE DES CLUSTERS</strong><br>
+        <strong style="font-size:14px;">CLUSTER LEGEND</strong><br>
     '''
-    for profile in cluster_profiles:
-        color = np.array(colormap(profile['cluster'] % 20)[:3]) * 255
+    for i, profile in enumerate(cluster_profiles):
+        color = np.array(colormap(i % 20)[:3]) * 255  # Ensure consistent color mapping
         color_hex = '#%02x%02x%02x' % tuple(color.astype(int))
         legend_html += f'''
         <div style="margin:10px 0; padding:5px; border-bottom:1px solid #eee;">
             <div style="display:flex; align-items:center;">
                 <div style="width:20px; height:20px; background:{color_hex};
                             border:1px solid #000; margin-right:10px;"></div>
-                <strong>Cluster {profile['cluster']}</strong>
+                <strong>{profile['cluster']}</strong>
             </div>
             <div style="margin-left:30px; font-size:12px;">
         '''
@@ -258,7 +276,7 @@ def create_meaningful_legend(cluster_profiles, colormap):
         '''
     legend_html += "</div>"
     return legend_html
-dst_crs = "EPSG:4326"  # Target CRS WGS84
+    dst_crs = "EPSG:4326"  # Target CRS WGS84
 
 
 def reproject_raster(input_path):
@@ -401,12 +419,13 @@ for name, cfg in infra_tags.items():
     gdf = ox.features_from_place("Algiers", tags=cfg["tags"])
     add_infrastructure_layer(gdf, name, cfg["category"])
 # --- Colormaps ---
-from rasterio.transform import array_bounds
 from rasterio.warp import transform_bounds
-
 from affine import Affine
 from matplotlib.image import resample
-
+import joblib
+from sklearn.decomposition import PCA
+from scipy.ndimage import generic_filter
+from rasterio.transform import array_bounds
 
 pop_cmap = plt.colormaps['hot']
 build_cmap = plt.colormaps['viridis']
@@ -420,7 +439,7 @@ if __name__ == "__main__":
     print("=== Début du traitement ===")
 
    
-    scale = 0.5  # réduction à 50 %
+    scale = 0.25  # réduction à 50 %
 
 # Chargement du raster de référence
 ref_raster, _, ref_transform, ref_crs, ref_shape = load_raster(tiff_paths[0])
@@ -465,71 +484,136 @@ filtered_layers = [layer for layer in all_layers if np.any(~np.isnan(layer[mask]
 # 5. Création de la matrice de features X (2D : pixels x variables)
 X = create_feature_matrix(filtered_layers, mask)
 
-# 6. Normalisation des features
+# 1. Normalize features
 scaler = MinMaxScaler()
 X_scaled = scaler.fit_transform(X)
 
-# === MODIFICATIONS ===
-from sklearn.decomposition import PCA  # Add this import
-
-# ... [previous code] ...
-
-# === DBSCAN ===
-print("\n=== DBSCAN ===")
-
-# 1. Add dimensionality reduction
-pca = PCA(n_components=10)  # Reduce to 10 principal components
+# 2. PCA for dimensionality reduction
+pca = PCA(n_components=10)
 X_scaled_pca = pca.fit_transform(X_scaled)
 
-# 2. Adjust HDBSCAN parameters
-clusterer = hdbscan.HDBSCAN(
-    min_cluster_size=50,  # Reduced from 200 to detect smaller clusters
-    min_samples=20,       # Helps reduce noise
-    cluster_selection_epsilon=0.1  # Merge nearby clusters
-)
-db_labels = clusterer.fit_predict(X_scaled_pca)  # Use reduced data
+# 3. HDBSCAN clustering with model caching
+hdbscan_model_path = os.path.join(WEB_MAPS_DIR, "hdbscan_model.joblib")
+if os.path.exists(hdbscan_model_path):
+    print("Loading existing HDBSCAN model...")
+    clusterer = joblib.load(hdbscan_model_path)
+    db_labels = clusterer.labels_
+else:
+    print("Training new HDBSCAN model...")
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=50,
+        min_samples=20,
+        cluster_selection_epsilon=0.2,
+        prediction_data=True
+    )
+    db_labels = clusterer.fit_predict(X_scaled_pca)
+    joblib.dump(clusterer, hdbscan_model_path)
+    print(f"HDBSCAN model saved to {hdbscan_model_path}")
 
-# 3. Add cluster validity check
+# 4. Mask for dense (non-noise) points
 dense_mask = db_labels != -1
 if np.sum(dense_mask) == 0:
     raise ValueError("No clusters found! Adjust HDBSCAN parameters or check input data")
+X_dense = X_scaled_pca[dense_mask]
 
-X_dense = X_scaled_pca[dense_mask]  # Use reduced data for KMeans
-
-# === KMeans sur les points denses ===
-print("\n=== KMeans sur les zones denses ===")
+# 5. KMeans on dense points (main segmentation)
+n_clusters = 2  # Only two clusters: background (dark blue) and urban (light blue)
 mbk = MiniBatchKMeans(
     n_clusters=n_clusters,
     batch_size=10000,
     random_state=42,
-    n_init='auto'  # Auto-determine number of initializations
+    n_init='auto'
 )
-# ... [rest of your code] ...
-
 mbk_labels_core = mbk.fit_predict(X_dense)
 
-# Recréer la grille complète avec les labels KMeans (les autres -1)
+# 6. Rebuild full label grid
 full_kmeans_labels = np.full_like(db_labels, fill_value=-1)
 full_kmeans_labels[dense_mask] = mbk_labels_core
 
-# === Segmentation finale ===
+# 7. Create segmentation image
 segmentation = create_segmentation(full_kmeans_labels, mask, ref_shape)
 
- 
- 
+# --- Hierarchical Clustering: Segment the Light Blue Zone Further ---
+# Identify the label for the light blue cluster (urban zone)
+# (Check which label is light blue by inspecting unique values or visualizing)
+light_blue_label = 1  # Usually 1 if background is 0, confirm by checking your map
+light_blue_mask = (segmentation == light_blue_label)
+
+# Extract features for these pixels (use the original X, not PCA)
+X_light_blue = X[light_blue_mask[mask]]
+
+# Cluster within the urban zone
+n_subclusters = 2  # Adjust as needed for sub-zones
+kmeans_light_blue = MiniBatchKMeans(n_clusters=n_subclusters, random_state=42)
+light_blue_sub_labels = kmeans_light_blue.fit_predict(X_light_blue)
+
+# Insert subcluster labels back into segmentation
+segmentation_refined = segmentation.copy()
+max_label = segmentation.max()
+segmentation_refined[light_blue_mask] = light_blue_sub_labels + max_label + 1
+
+# Optional: Smooth the boundaries (mode filter)
+def mode_filter(segmentation, size=3):
+    def mode_func(x):
+        vals, counts = np.unique(x, return_counts=True)
+        return vals[np.argmax(counts)]
+    return generic_filter(segmentation, mode_func, size=size)
+
+smoothed_segmentation = mode_filter(segmentation_refined, size=20)
+
+# --- Visualization ---
 cluster_cmap = plt.cm.tab20
 cluster_rgb = apply_colormap(
-    segmentation, 
+    smoothed_segmentation,  # use the final, smoothed segmentation!
     cluster_cmap,
     upscale_factor=4,
-    background_label=-1  # Transparent background for -1 labels
+    background_label=-1
 )
+
+# Specify the clusters you want to outline (adjust as needed)
+clusters_to_outline = [0, 1, 2]  # Use np.unique(smoothed_segmentation) to confirm your cluster labels
+
+# Find boundaries only for these clusters
+mask_outline = np.isin(smoothed_segmentation, clusters_to_outline)
+boundaries = find_boundaries(smoothed_segmentation, mode='outer') & mask_outline
+
+# Upscale boundaries to match cluster_rgb size (if you use upscale_factor)
+if cluster_rgb.shape[:2] != boundaries.shape:
+    boundaries = resize(boundaries.astype(float), cluster_rgb.shape[:2], order=0, preserve_range=True).astype(bool)
+
+# Create an RGBA image for the outline: black color with full opacity where boundaries are
+outline = np.zeros_like(cluster_rgb)
+outline[boundaries] = [0, 0, 0, 255]  # Black with full opacity
+
+# Overlay the outline on top of the cluster_rgb image (alpha compositing)
+alpha_outline = outline[..., 3:4] / 255.0
+alpha_cluster = cluster_rgb[..., 3:4] / 255.0
+alpha_composite = alpha_outline + alpha_cluster * (1 - alpha_outline)
+composite_rgb = (outline[..., :3] * alpha_outline + cluster_rgb[..., :3] * alpha_cluster * (1 - alpha_outline)) / np.clip(alpha_composite, 1e-6, 1)
+composite_rgb = np.clip(composite_rgb, 0, 255).astype(np.uint8)
+composite_alpha = (alpha_composite * 255).astype(np.uint8)
+cluster_rgb_with_outline = np.dstack((composite_rgb, composite_alpha))
+
 ref_bounds = array_bounds(ref_shape[0], ref_shape[1], ref_transform)
-cluster_layer = raster_layer(cluster_rgb, ref_bounds, ref_crs, "Urban Clusters")
-
+cluster_layer = raster_layer(cluster_rgb_with_outline, ref_bounds, ref_crs, "Urban Clusters")
 cluster_layer.add_to(m)
-# --- Colormap Legends ---
 
+feature_names = ["Population", "Buildings"] + [os.path.splitext(os.path.basename(p))[0] for p in geojson_paths]
+descriptions = {
+    "Cluster 0": "Background or non-urban areas",
+    "Cluster 1": "Urban areas with moderate density",
+    "Cluster 2": "High-density urban areas"
+}
+combined_profiles = analyze_clusters_combined(mbk, kmeans_light_blue, feature_names, descriptions)
+
+# Remove the light blue cluster (Cluster 1) from the legend
+combined_profiles = [profile for profile in combined_profiles if profile['cluster'] != "Urban areas with moderate density"]
+
+# Create a fixed legend
+combined_legend_fixed = create_combined_legend_fixed(combined_profiles, cluster_cmap)
+m.get_root().html.add_child(Element(combined_legend_fixed))
+
+# --- Colormap Legends ---
 
 
 pop_min, pop_max = np.nanmin(pop_data), np.nanmax(pop_data)
@@ -580,11 +664,3 @@ ImageOverlay(
     zindex=1
 ).add_to(m)
 
-# --- Cluster Legend ---
-#cluster_profiles = analyze_clusters(kmeans, ["Population", "Buildings"])
-#cluster_legend = create_meaningful_legend(cluster_profiles, cluster_cmap)
-#m.get_root().html.add_child(Element(cluster_legend))
-LayerControl(position="topright", collapsed=False).add_to(m)
-#m.save(output_map_path)
-print(f"Map saved to {output_map_path}")
-m
