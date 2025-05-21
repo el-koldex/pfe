@@ -213,37 +213,24 @@ def raster_layer(rgb_image, bounds, crs, layer_name):
     ).add_to(layer)
     return layer
 
-def analyze_clusters_combined(main_cluster_model, subcluster_model, feature_names, descriptions):
-    
-   # Combine main clusters and subclusters into a single list of profiles with descriptions.
-    
-    combined_profiles = []
-    # Analyze main clusters
-    main_centroids = main_cluster_model.cluster_centers_
-    for i, centroid in enumerate(main_centroids):
-        profile = {
-            'cluster': descriptions.get(f"Cluster {i}", f"Cluster {i}"),
-            'features': [
-                ("Population", centroid[feature_names.index("Population")]),
-                ("Buildings", centroid[feature_names.index("Buildings")]),
-            ],
-        }
-        combined_profiles.append(profile)
-
-    # Analyze subclusters (continue numbering from main clusters)
-    sub_centroids = subcluster_model.cluster_centers_
-    offset = len(main_centroids)  # Start numbering subclusters after main clusters
-    for i, centroid in enumerate(sub_centroids):
-        profile = {
-            'cluster': descriptions.get(f"Cluster {i + offset}", f"Cluster {i + offset}"),
-            'features': [
-                ("Population", centroid[feature_names.index("Population")]),
-                ("Buildings", centroid[feature_names.index("Buildings")]),
-            ],
-        }
-        combined_profiles.append(profile)
-
-    return combined_profiles
+def analyze_all_clusters(segmentation, X, mask, feature_names, descriptions):
+    profiles = []
+    labels = np.unique(segmentation)
+    for label in labels:
+        if label == -1:
+            continue
+        mask_label = (segmentation == label) & mask
+        if np.sum(mask_label) == 0:
+            continue
+        X_label = X[mask_label[mask]]
+        mean_vals = np.mean(X_label, axis=0)
+        desc = descriptions.get(f"Cluster {label}", f"Cluster {label}")
+        features = [
+            ("Population", mean_vals[feature_names.index("Population")]),
+            ("Buildings", mean_vals[feature_names.index("Buildings")])
+        ]
+        profiles.append({'cluster': desc, 'features': features})
+    return profiles
 
 
 def create_combined_legend_fixed(cluster_profiles, colormap):
@@ -280,7 +267,7 @@ def create_combined_legend_fixed(cluster_profiles, colormap):
         '''
     legend_html += "</div>"
     return legend_html
-    dst_crs = "EPSG:4326"  # Target CRS WGS84
+dst_crs = "EPSG:4326"  # Target CRS WGS84
 
 
 def reproject_raster(input_path):
@@ -422,7 +409,6 @@ def add_infrastructure_layer(gdf, name, category):
 for name, cfg in infra_tags.items():
     gdf = ox.features_from_place("Algiers", tags=cfg["tags"])
     add_infrastructure_layer(gdf, name, cfg["category"])
-
 # --- Colormaps ---
 pop_cmap = plt.colormaps['hot']
 build_cmap = plt.colormaps['viridis']
@@ -550,21 +536,49 @@ def mode_filter(segmentation, size):
 
 smoothed_segmentation = mode_filter(segmentation_refined, size=20)
 
+# --- Hierarchical Clustering: Segment the Orange Cluster Further ---
+orange_label = 2  # Replace with the actual label for orange if different
+
+# Mask for orange cluster in the current segmentation
+orange_mask = (smoothed_segmentation == orange_label)
+
+# Only consider valid pixels (where mask is True)
+valid_orange_mask = orange_mask & mask  # 2D mask
+
+# Extract features for these pixels (use the original X, not PCA)
+X_orange = X[valid_orange_mask[mask]]  # This selects only the valid orange pixels
+
+# Cluster within the orange zone
+kmeans_orange = MiniBatchKMeans(n_clusters=2, random_state=42)
+orange_sub_labels = kmeans_orange.fit_predict(X_orange)
+
+# Insert subcluster labels back into segmentation
+# Flatten for assignment, then reshape back
+segmentation_orange_refined = smoothed_segmentation.copy().ravel()
+idx_valid_orange = np.where(valid_orange_mask.ravel())[0]
+max_label = smoothed_segmentation.max()
+segmentation_orange_refined[idx_valid_orange] = orange_sub_labels + max_label + 1
+segmentation_orange_refined = segmentation_orange_refined.reshape(smoothed_segmentation.shape)
+# Smooth the boundaries (mode filter)
+smoothed_segmentation_final = mode_filter(segmentation_orange_refined, size=20)
+
+
+
 # --- Visualization ---
 cluster_cmap = plt.cm.tab20
 cluster_rgb = apply_colormap(
-    smoothed_segmentation,  # use the final, smoothed segmentation!
+    smoothed_segmentation_final,  # use the final, smoothed segmentation!
     cluster_cmap,
     upscale_factor=4,
     background_label=-1
 )
 
 # Specify the clusters you want to outline (adjust as needed)
-clusters_to_outline = [0, 1, 2,3]  # Use np.unique(smoothed_segmentation) to confirm your cluster labels
+clusters_to_outline = [label for label in np.unique(smoothed_segmentation_final) if label != -1] # Use np.unique(smoothed_segmentation) to confirm your cluster labels
 
 # Find boundaries only for these clusters
-mask_outline = np.isin(smoothed_segmentation, clusters_to_outline)
-boundaries = find_boundaries(smoothed_segmentation, mode='outer') & mask_outline
+mask_outline = np.isin(smoothed_segmentation_final, clusters_to_outline)
+boundaries = find_boundaries(smoothed_segmentation_final, mode='outer') & mask_outline
 
 # Upscale boundaries to match cluster_rgb size (if you use upscale_factor)
 if cluster_rgb.shape[:2] != boundaries.shape:
@@ -588,16 +602,18 @@ cluster_layer = raster_layer(cluster_rgb_with_outline, ref_bounds, ref_crs, "Urb
 cluster_layer.add_to(m)
 
 feature_names = ["Population", "Buildings"] + [os.path.splitext(os.path.basename(p))[0] for p in geojson_paths]
+present_labels = set(np.unique(smoothed_segmentation_final))
 descriptions = {
     "Cluster 0": "Non-urban areas",
-    "Cluster 1": "skip",
-    "Cluster 2": "Urban areas with moderate density",
-    "Cluster 3": "High-density urban areas"
+    "Cluster 3": "High-density urban areas (beige/orange)",
+    "Cluster 4": "Urban subcluster A (dark green)",
+    "Cluster 5": "Urban subcluster B (light green)",
 }
 
-
 # Analyze clusters as before
-combined_profiles = analyze_clusters_combined(mbk, kmeans_light_blue, feature_names, descriptions)
+combined_profiles = analyze_all_clusters(
+    smoothed_segmentation_final, X, mask, feature_names, descriptions
+)
 for profile in combined_profiles:
     if profile['cluster'] == "Non-urban areas":
         profile['features'] = [
@@ -606,14 +622,13 @@ for profile in combined_profiles:
         ]
 # Remove the light blue cluster ("Urban areas with moderate density") from the legend
 combined_profiles = [
-    profile for profile in combined_profiles
-    if profile['cluster'] != "skip"
+    profile for i, profile in enumerate(combined_profiles)
+    if i in present_labels and profile['cluster'] != "skip"
 ]
 
 # Create the fixed legend with only the desired clusters
 combined_legend_fixed = create_combined_legend_fixed(combined_profiles, cluster_cmap)
 m.get_root().html.add_child(Element(combined_legend_fixed))
-
 # --- Colormap Legends ---
 
 
@@ -665,8 +680,7 @@ ImageOverlay(
     zindex=1
 ).add_to(m)
 
-
 LayerControl(position="topright", collapsed=False).add_to(m)
-m.save(output_map_path)
+#m.save(output_map_path)
 print(f"Map saved to {output_map_path}")
 m
