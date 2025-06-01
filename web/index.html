@@ -42,7 +42,14 @@
             scroll-behavior: smooth;
             scroll-padding-top: 80px;
         }
-
+        .dot {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background-color: red;
+      border-radius: 50%;
+      cursor: pointer;
+    }
         /* === Loader === */
         .loader {
             position: fixed;
@@ -102,7 +109,7 @@
           align-items: center;
             
         }
-    
+    f
         
 
         .nav-links {
@@ -160,7 +167,7 @@
             width: 100%;
             height: 150%;
             background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.5)), 
-                        url(images/earth.gif) center/cover fixed;
+            url(images/earth.gif) center/cover fixed;
             z-index: -1;
             will-change: transform;
         }
@@ -529,7 +536,7 @@ body.dark-mode footer {
 /* Styles pour la carte D3 */
 .d3-map-container {
   margin: 4rem auto 0;
-  max-width: 1000px;
+  max-width: 100%;
   background: white;
   padding: 2rem;
   border-radius: 12px;
@@ -595,10 +602,7 @@ body.dark-mode .d3-map-container {
 </head>
 <body>
     
-    <!-- Loader -->
-    <div class="loader">
-        <div class="loader-spinner"></div>
-    </div>
+   
 
     <!-- Navigation -->
     <nav>
@@ -638,15 +642,15 @@ body.dark-mode .d3-map-container {
             
             <div class="stats-container">
                 <div class="stat-item">
-                    <div class="stat-number" data-target="32000">0</div>
-                    <p>Points de données</p>
+                    <div class="stat-number" data-target="57">0</div>
+                    <p>Communes couvertes</p>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number" data-target="95">0</div>
+                    <div class="stat-number" data-target="96">0</div>
                     <p>% de précision</p>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number" data-target="12">0</div>
+                    <div class="stat-number" data-target="4">0</div>
                     <p>Zones identifiées</p>
                 </div>
             </div>
@@ -670,15 +674,28 @@ body.dark-mode .d3-map-container {
                         <span class="method-step">Étape 1</span>
                         <h3 class="method-title">Collecte des Données</h3>
                         <p class="method-text">
-                            Extraction des données géospatiales depuis OpenStreetMap via l'API Overpass Turbo.
-                            Nous avons ciblé les éléments clés : bâtiments, routes, zones commerciales et industrielles.
+                           Les données du projet proviennent de trois sources ouvertes, fiables et régulièrement mises à jour :
+
+OpenStreetMap (OSM) : Fournit des données vectorielles sur les bâtiments, routes et infrastructures, utilisées pour estimer la densité de constructions.
+
+Global Human Settlement Layer (GHSL) : Offre des couches raster à haute résolution sur l’occupation du sol et la présence humaine, issues d’images satellites.
+
+GADM : Base de données cartographique pour les frontières administratives détaillées (pays, régions, communes, etc.), utile pour relier des données à des entités administratives.
+
+Pour adapter ces données à la wilaya d’Alger, le logiciel QGIS a été utilisé afin de :
+
+Découper les données sur la zone d’étude,
+
+Convertir les formats si besoin (vectoriel ↔ raster),
+
+Harmoniser les systèmes de coordonnées.
+
+Cette préparation a permis d’obtenir un jeu de données cohérent et directement exploitable pour le projet.
                         </p>
-                        <p class="method-text">
-                            Un script Python automatisé nettoie et formate les données pour l'analyse.
-                        </p>
+                
                     </div>
                     <div class="method-image">
-                        <img src="images/Données.PNG" alt="Code collecte données">
+                        <img src="images/Donnees.PNG" alt="Code collecte données">
                     </div>
                 </div>
                 
@@ -687,12 +704,28 @@ body.dark-mode .d3-map-container {
                         <span class="method-step">Étape 2</span>
                         <h3 class="method-title">Clustering K-MEANS</h3>
                         <p class="method-text">
-                            On applique K-means avec K = 4 (zones rurales, résidentielles, industrielles, commer
-                            ciales). Chaque cluster est ensuite interprété selon ses valeurs moyennes.
+                           Après avoir isolé les zones pertinentes, nous appliquons un second niveau de
+regroupement : le clustering par MiniBatchKMeans. Il s'agit d'une variante de
+l'algorithme KMeans standard, plus rapide et plus adaptée à de grands ensembles de
+données.
+L'objectif ici est de regrouper les pixels filtrés par similarité de caractéristiques
+(densité population, densité construction) afin d'obtenir des zones cohérentes et
+homogènes. Ces groupes sont appelés "clusters" et peuvent représenter différentes
+catégories de territoire : zones résidentielles denses, zones industrielles, quartiers
+périurbains, etc.
+Le choix du nombre de clusters K est déterminé de manière empirique grâce à la
+méthode du coude. Cette méthode consiste à tracer l'inertie intra-classe (somme des
+distances des points à leur centroïde) en fonction du nombre de clusters. Le point de
+flexion sur cette courbe indique un bon compromis entre compacité des groupes et
+complexité du modèle, Dans notre cas, cette analyse graphique a montré un coude clair
+pour K = 4, ce qui correspond à un bon compromis entre cohérence des groupes et
+lisibilité cartographique. Ces quatre clusters reflètent des profils de zones distincts
+11
+interprétables et utiles pour la prise de décision. Ce choix a été validé empiriquement
+par une visualisation finale stable et segmentée de manière significative.
+Cette étape produit une étiquette de cluster pour chaque pixel filtré.
                         </p>
-                        <p class="method-text">
-                            Visualisation des clusters avec Folium et Matplotlib.
-                        </p>
+                       
                     </div>
                     <div class="method-image">
                         <img src="images/KMEANS.PNG" alt="Code DBSCAN">
@@ -702,14 +735,27 @@ body.dark-mode .d3-map-container {
                 <div class="method-card">
                     <div class="method-content">
                         <span class="method-step">Étape 3</span>
-                        <h3 class="method-title">Classification</h3>
+                        <h3 class="method-title">HDBSCAN</h3>
                         <p class="method-text">
-                            Labellisation automatique des clusters basée sur les caractéristiques dominantes :
-                            ratio bâtiments/espaces verts, densité de routes, présence d'installations industrielles.
+                           Le filtrage spatial est la première étape critique du pipeline. Son objectif est d'isoler les
+régions présentant une forte densité de données pertinentes (ex : forte population et
+concentration de bâtiments). Pour cela, nous utilisons l'algorithme HDBSCAN
+(Hierarchical Density-Based Spatial Clustering of Applications with Noise), qui est
+particulièrement adapté aux données bruitées et aux structures de densité inégale.
+Contrairement à KMeans, HDBSCAN ne nécessite pas de spécifier un nombre de
+clusters à l'avance. Il se base sur la densité locale pour identifier les zones homogènes
+et supprime automatiquement les points trop isolés ou peu significatifs. Cela nous
+permet d'obtenir un masque spatial représentant uniquement les zones d'intérêt, tout
+en réduisant drastiquement le bruit dans les données.
+Les avantages principaux de HDBSCAN dans notre contexte sont :
+ La détection automatique du nombre de clusters potentiels (non supervisée)
+ L'élimination naturelle des pixels dispersés (bruit)
+ L'adaptabilité à la densité variable des données (zones urbaines vs périurbaines)
+Le masque résultant est une première carte binaire où seuls les pixels appartenant à
+une zone dense sont conservés. Ce sous-ensemble devient la base du clustering
+suivant
                         </p>
-                        <p class="method-text">
-                            Validation manuelle sur un échantillon de 500 points pour évaluer la précision.
-                        </p>
+
                     </div>
                     <div class="method-image">
                         <img src="images/Visu.PNG" alt="Classification">
@@ -752,15 +798,7 @@ body.dark-mode .d3-map-container {
             <div class="d3-map-container">
                 <h3 class="section-subtitle">Carte Interactive d'Alger</h3>
                 <iframe src="maps/algiers_map.html" width="100%" height="700px" style="border:none;" title="Algiers Map"></iframe>
-                <div class="map-controls">
-                  <button class="map-btn" id="zoom-algiers">Zoom Alger</button>
-                  <button class="map-btn" id="reset-zoom">Reset</button>
-                </div>
-                <div class="map-legend">
-                  <div><span class="legend-dot residential"></span> Résidentiel</div>
-                  <div><span class="legend-dot industrial"></span> Industriel</div>
-                  <div><span class="legend-dot rural"></span> Rural</div>
-                </div>
+                
               </div>
        
        
@@ -955,11 +993,11 @@ gsap.from('.hero-subtitle', {
 new Chart(document.getElementById('stats-chart'), {
     type: 'bar',
     data: {
-      labels: ['Résidentiel', 'Industriel', 'Rural', 'Commercial'],
+      labels: ['High building and population density', 'Moderate building and population density', 'low building and population density', 'Very low / Non-urban areas'],
       datasets: [{
         label: 'Répartition des zones',
-        data: [45, 25, 20, 10],
-        backgroundColor: ['#ED1C24', '#FF6B00', '#4CAF50', '#2196F3']
+        data: [7, 20, 3, 70],
+        backgroundColor: ['#00FF00', '#006400', '#4CAF50', '#2196F3']
       }]
     }
   });
